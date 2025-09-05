@@ -103,10 +103,23 @@ if file_excel is not None:
                 df_vettore = df[df['COD-VETTORE'] == vettore_selezionato].copy()
 
                 # === BLOCCO DI LOGICA CORRETTO E DEFINITIVO ===
-                # 1. Riempi i valori mancanti (None/NaN) con stringhe vuote PRIMA di fare qualsiasi altra cosa.
-                df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].fillna('')
-                df_vettore['LOCALITA'] = df_vettore['LOCALITA'].fillna('')
+               # === BLOCCO DI LOGICA CORRETTO E DEFINITIVO ===
+# 1. Riempi i valori mancanti (None/NaN) con stringhe vuote PRIMA di fare qualsiasi altra cosa.
+df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].fillna('')
+df_vettore['LOCALITA'] = df_vettore['LOCALITA'].fillna('')
 
-                # 2. Assicura che le colonne siano di tipo stringa per i passaggi successivi.
-                df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].astype(str)
-                df_vettore['LOCALITA'] = df_
+# 2. Assicura che le colonne siano di tipo stringa per i passaggi successivi.
+df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].astype(str)
+df_vettore['LOCALITA'] = df_vettore['LOCALITA'].astype(str)
+df_vettore['INDIRIZZO'] = df_vettore['INDIRIZZO'].astype(str)
+
+# 3. Scegli la località: usa 'MS-LOCALIT' se, dopo aver rimosso spazi, non è vuota. Altrimenti, usa 'LOCALITA'.
+localita_scelta = np.where(
+    df_vettore['MS-LOCALIT'].str.strip() != '', 
+    df_vettore['MS-LOCALIT'], 
+    df_vettore['LOCALITA']
+)
+
+# 4. Crea l'indirizzo completo
+df_vettore['IndirizzoCompleto'] = df_vettore['INDIRIZZO'] + ", " + localita_scelta
+# =======================================================
