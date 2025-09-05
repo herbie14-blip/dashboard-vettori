@@ -12,7 +12,7 @@ PUNTI_PARTENZA_VETTORI = {
     "LINE": "BRESCIA", "DAM1": "BRESCIA", "NEX4": "BRESCIA", "NEX8": "BRESCIA",
     "MBE": "BRESCIA", "NEX3": "BRESCIA", "NEX6": "BRESCIA", "PAP2": "BRESCIA",
     "PEZZ": "BRESCIA", "NEX2": "BRESCIA", "DAM2": "BRESCIA", "NEX9": "BRESCIA",
-    "PEZZ2": "ARTOGNE",  # MODIFICATO: Nuovo punto di partenza per PEZ2
+    "PEZZ2": "ARTOGNE",
     "NEX5": "BRESCIA", "PAPA": "BRESCIA", "LIN2": "BRESCIA",
     "NEX1": "BRESCIA", "PAP3": "BRESCIA", "NEX7": "BRESCIA",
     "CTM1": "CALDERARA DI RENO", "CTM2": "CALDERARA DI RENO", "CTM3": "CALDERARA DI RENO",
@@ -25,22 +25,25 @@ INDIRIZZO_PARTENZA_CIEB = "Cieb S.p.A., Via Giovanni Battista Cacciamali, 62, 25
 def check_password():
     try:
         correct_password = st.secrets["APP_PASSWORD"]
-    except: return True
-    if st.session_state.get("password_correct", False): return True
+    except:
+        return True
+    if st.session_state.get("password_correct", False):
+        return True
     password = st.text_input("Inserisci la password per accedere", type="password")
     if password == correct_password:
         st.session_state["password_correct"] = True
         st.rerun()
         return True
-    elif password: st.error("Password errata.")
-
+    elif password:
+        st.error("Password errata.")
     return False
 
-# --- UI DELLA SIDEBAR ---
+# --- UI DELLA SIDEBAR (VISIBILE A TUTTI) ---
 st.sidebar.image("logo_cieb.png", use_container_width=True)
 st.sidebar.markdown("---")
 
-# --- APPLICAZIONE PRINCIPALE ---
+
+# --- APPLICAZIONE PRINCIPALE (VISIBILE DOPO LOGIN) ---
 if check_password():
     try:
         gmaps = googlemaps.Client(key=st.secrets["GOOGLE_MAPS_API_KEY"])
@@ -51,27 +54,48 @@ if check_password():
     # --- FUNZIONI CORE ---
     @st.cache_data
     def carica_dati(file_caricato):
-        try: return pd.read_excel(file_caricato)
-        except Exception as e: st.error(f"Errore lettura Excel: {e}"); return None
+        try:
+            return pd.read_excel(file_caricato)
+        except Exception as e:
+            st.error(f"Errore durante la lettura del file Excel: {e}")
+            return None
 
     def calcola_percorso_ottimizzato(_gmaps_client, indirizzi, origine, destinazione):
         if not indirizzi: return 0, 0, [], None
         try:
-            res = _gmaps_client.directions(origin=origine, destination=destinazione, waypoints=indirizzi, optimize_waypoints=True, mode="driving", departure_time=datetime.now())
-            if not res: st.warning("Google Maps non ha restituito un risultato."); return 0, 0, [], None
+            res = _gmaps_client.directions(origin=origine, destination=destinazione, waypoints=indirizzi, 
+                                           optimize_waypoints=True, mode="driving", departure_time=datetime.now())
+            if not res:
+                st.warning("Google Maps non ha restituito un risultato.")
+                return 0, 0, [], None
             dist_km = sum(leg['distance']['value'] for leg in res[0]['legs']) / 1000
             tempo_min = sum(leg['duration']['value'] for leg in res[0]['legs']) / 60
             ordine = [indirizzi[i] for i in res[0]['waypoint_order']]
             return round(dist_km, 2), round(tempo_min), ordine, res
-        except Exception as e: st.error(f"Errore API Google Maps: {e}"); return 0, 0, [], None
+        except Exception as e:
+            st.error(f"Errore durante la chiamata a Google Maps API: {e}")
+            return 0, 0, [], None
 
     def estrai_coordinate_per_mappa(res):
         punti = []
         if not res: return pd.DataFrame()
         partenza = res[0]['legs'][0]['start_location']
         punti.append({'lat': partenza['lat'], 'lon': partenza['lng']})
-        for leg in res[0]['legs']: punti.append({'lat': leg['end_location']['lat'], 'lon': leg['end_location']['lng']})
+        for leg in res[0]['legs']:
+            punti.append({'lat': leg['end_location']['lat'], 'lon': leg['end_location']['lng']})
         return pd.DataFrame(punti)
 
     # --- UI PRINCIPALE ---
     st.title("🚚 Dashboard Analisi Consegne Vettori")
+    st.markdown("Carica il file Excel per ottimizzare i percorsi.")
+    st.sidebar.subheader("Controlli Dashboard")
+    file_excel = st.sidebar.file_uploader("Carica foglio Excel", type=['xlsx', 'xls'])
+
+    if file_excel is not None:
+        df = carica_dati(file_excel)
+        if df is not None:
+            st.sidebar.success("File caricato!")
+            
+            colonne = ['COD-VETTOR', 'INDIRIZZO', 'LOCALITA', 'CAP', 'MS-LOCALIT', 'MS-CAP']
+            if not all(col in df.columns for col in colonne):
+                st.sidebar.error(f"Mancano colonne: assicurati che ci siano {', '.join(colonne)}.")
