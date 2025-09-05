@@ -22,7 +22,6 @@ INDIRIZZO_PARTENZA_CIEB = "Cieb S.p.A., Via Giovanni Battista Cacciamali, 62, 25
 
 # --- LOGICA DI AUTENTICAZIONE ---
 def check_password():
-    # ... (la funzione password rimane invariata) ...
     try:
         correct_password = st.secrets["APP_PASSWORD"]
     except: return True
@@ -47,14 +46,13 @@ if check_password():
         st.error(f"Errore nella configurazione della chiave API: {e}")
         st.stop()
 
-    # --- FUNZIONI CORE (invariate) ---
+    # --- FUNZIONI CORE ---
     @st.cache_data
     def carica_dati(file_caricato):
         try: return pd.read_excel(file_caricato)
         except Exception as e: st.error(f"Errore lettura Excel: {e}"); return None
 
     def calcola_percorso_ottimizzato(_gmaps_client, indirizzi, origine, destinazione):
-        # ... (la funzione calcolo percorso rimane invariata) ...
         if not indirizzi: return 0, 0, [], None
         try:
             res = _gmaps_client.directions(origin=origine, destination=destinazione, waypoints=indirizzi, optimize_waypoints=True, mode="driving", departure_time=datetime.now())
@@ -66,7 +64,6 @@ if check_password():
         except Exception as e: st.error(f"Errore API Google Maps: {e}"); return 0, 0, [], None
 
     def estrai_coordinate_per_mappa(res):
-        # ... (la funzione coordinate rimane invariata) ...
         punti = []
         if not res: return pd.DataFrame()
         partenza = res[0]['legs'][0]['start_location']
@@ -84,9 +81,11 @@ if check_password():
         df = carica_dati(file_excel)
         if df is not None:
             st.sidebar.success("File caricato!")
-            colonne = ['COD-VETTORE', 'INDIRIZZO', 'LOCALITA', 'MS-LOCALIT']
+            
+            # MODIFICATO: Aggiunte le colonne CAP alle colonne richieste
+            colonne = ['COD-VETTORE', 'INDIRIZZO', 'LOCALITA', 'CAP', 'MS-LOCALIT', 'MS-CAP']
             if not all(col in df.columns for col in colonne):
-                st.sidebar.error(f"Mancano colonne: {', '.join(colonne)}.")
+                st.sidebar.error(f"Mancano colonne: assicurati che ci siano {', '.join(colonne)}.")
             else:
                 vettori = sorted(df['COD-VETTORE'].dropna().unique().tolist())
                 vettore_sel = st.sidebar.selectbox("Seleziona un vettore:", options=vettori)
@@ -99,24 +98,27 @@ if check_password():
 
                     df_vettore = df[df['COD-VETTORE'] == vettore_sel].copy()
                     
-                    # --- BLOCCO DI LOGICA PER LA DESTINAZIONE (invariato) ---
-                    df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].fillna('').astype(str)
-                    df_vettore['LOCALITA'] = df_vettore['LOCALITA'].fillna('').astype(str)
-                    df_vettore['INDIRIZZO'] = df_vettore['INDIRIZZO'].fillna('').astype(str)
-                    localita_scelta = np.where(df_vettore['MS-LOCALIT'].str.strip() != '', df_vettore['MS-LOCALIT'], df_vettore['LOCALITA'])
-                    df_vettore['IndirizzoCompleto'] = df_vettore['INDIRIZZO'] + ", " + localita_scelta
-                    
-                    # === NUOVO BLOCCO DI ISPEZIONE AVANZATA ===
-                    with st.expander("🔬 CLICCA QUI PER APRIRE LA FINESTRA DI ISPEZIONE DATI"):
-                        st.warning("Questa tabella mostra i dati letti e l'indirizzo finale generato.")
-                        # Crea una tabella di debug con le colonne rilevanti
-                        df_debug = df_vettore[['INDIRIZZO', 'LOCALITA', 'MS-LOCALIT', 'IndirizzoCompleto']].copy()
-                        st.dataframe(df_debug)
-                    # ==========================================
+                    # === BLOCCO DI LOGICA DEFINITIVO CON GESTIONE CAP ===
+                    # 1. Pulisci tutte le colonne necessarie
+                    for col in ['INDIRIZZO', 'LOCALITA', 'MS-LOCALIT', 'CAP', 'MS-CAP']:
+                        df_vettore[col] = df_vettore[col].fillna('').astype(str)
+                        if 'CAP' in col:
+                            # Rimuove ".0" dai CAP letti come numeri da Excel
+                            df_vettore[col] = df_vettore[col].str.replace(r'\.0$', '', regex=True)
 
+                    # 2. Definisci la condizione: MS-LOCALIT è compilata?
+                    condition = df_vettore['MS-LOCALIT'].str.strip() != ''
+
+                    # 3. Scegli la località e il CAP in base alla condizione
+                    localita_scelta = np.where(condition, df_vettore['MS-LOCALIT'], df_vettore['LOCALITA'])
+                    cap_scelto = np.where(condition, df_vettore['MS-CAP'], df_vettore['CAP'])
+
+                    # 4. Crea l'indirizzo completo ultra-preciso
+                    df_vettore['IndirizzoCompleto'] = df_vettore['INDIRIZZO'] + ", " + cap_scelto + " " + localita_scelta
+                    # =======================================================
+                    
                     indirizzi_da_visitare = df_vettore['IndirizzoCompleto'].unique().tolist()
                     
-                    # --- Il resto del codice per mostrare i risultati rimane invariato ---
                     col1, col2 = st.columns(2)
                     with col1:
                         st.subheader(f"📍 {len(indirizzi_da_visitare)} Destinazioni uniche")
