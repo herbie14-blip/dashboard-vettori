@@ -22,19 +22,17 @@ INDIRIZZO_PARTENZA_CIEB = "Cieb S.p.A., Via Giovanni Battista Cacciamali, 62, 25
 
 # --- LOGICA DI AUTENTICAZIONE ---
 def check_password():
+    # ... (la funzione password rimane invariata) ...
     try:
         correct_password = st.secrets["APP_PASSWORD"]
-    except:
-        return True
-    if st.session_state.get("password_correct", False):
-        return True
+    except: return True
+    if st.session_state.get("password_correct", False): return True
     password = st.text_input("Inserisci la password per accedere", type="password")
     if password == correct_password:
         st.session_state["password_correct"] = True
         st.rerun()
         return True
-    elif password:
-        st.error("Password errata.")
+    elif password: st.error("Password errata.")
     return False
 
 # --- UI DELLA SIDEBAR ---
@@ -46,81 +44,79 @@ if check_password():
     try:
         gmaps = googlemaps.Client(key=st.secrets["GOOGLE_MAPS_API_KEY"])
     except Exception as e:
-        st.error(f"Errore nella configurazione della chiave API. Controlla i tuoi Secrets: {e}")
+        st.error(f"Errore nella configurazione della chiave API: {e}")
         st.stop()
 
-    # --- FUNZIONI CORE ---
+    # --- FUNZIONI CORE (invariate) ---
     @st.cache_data
     def carica_dati(file_caricato):
-        try:
-            return pd.read_excel(file_caricato)
-        except Exception as e:
-            st.error(f"Errore durante la lettura del file Excel: {e}")
-            return None
+        try: return pd.read_excel(file_caricato)
+        except Exception as e: st.error(f"Errore lettura Excel: {e}"); return None
 
-    def calcola_percorso_ottimizzato(_gmaps_client, indirizzi_waypoint, origine, destinazione):
-        if not indirizzi_waypoint: return 0, 0, [], None
+    def calcola_percorso_ottimizzato(_gmaps_client, indirizzi, origine, destinazione):
+        # ... (la funzione calcolo percorso rimane invariata) ...
+        if not indirizzi: return 0, 0, [], None
         try:
-            directions_result = _gmaps_client.directions(
-                origin=origine, destination=destinazione, waypoints=indirizzi_waypoint, 
-                optimize_waypoints=True, mode="driving", departure_time=datetime.now()
-            )
-            if not directions_result:
-                st.warning("Google Maps non ha restituito un risultato.")
-                return 0, 0, [], None
-            distanza_km = sum(leg['distance']['value'] for leg in directions_result[0]['legs']) / 1000
-            tempo_min = sum(leg['duration']['value'] for leg in directions_result[0]['legs']) / 60
-            ordine_idx = directions_result[0]['waypoint_order']
-            indirizzi_ordinati = [indirizzi_waypoint[i] for i in ordine_idx]
-            return round(distanza_km, 2), round(tempo_min), indirizzi_ordinati, directions_result
-        except Exception as e:
-            st.error(f"Errore durante la chiamata a Google Maps API: {e}")
-            return 0, 0, [], None
+            res = _gmaps_client.directions(origin=origine, destination=destinazione, waypoints=indirizzi, optimize_waypoints=True, mode="driving", departure_time=datetime.now())
+            if not res: st.warning("Google Maps non ha restituito un risultato."); return 0, 0, [], None
+            dist_km = sum(leg['distance']['value'] for leg in res[0]['legs']) / 1000
+            tempo_min = sum(leg['duration']['value'] for leg in res[0]['legs']) / 60
+            ordine = [indirizzi[i] for i in res[0]['waypoint_order']]
+            return round(dist_km, 2), round(tempo_min), ordine, res
+        except Exception as e: st.error(f"Errore API Google Maps: {e}"); return 0, 0, [], None
 
-    def estrai_coordinate_per_mappa(directions_result):
-        punti_mappa = []
-        if not directions_result: return pd.DataFrame()
-        partenza = directions_result[0]['legs'][0]['start_location']
-        punti_mappa.append({'lat': partenza['lat'], 'lon': partenza['lng']})
-        for leg in directions_result[0]['legs']:
-            tappa = leg['end_location']
-            punti_mappa.append({'lat': tappa['lat'], 'lon': tappa['lng']})
-        return pd.DataFrame(punti_mappa)
+    def estrai_coordinate_per_mappa(res):
+        # ... (la funzione coordinate rimane invariata) ...
+        punti = []
+        if not res: return pd.DataFrame()
+        partenza = res[0]['legs'][0]['start_location']
+        punti.append({'lat': partenza['lat'], 'lon': partenza['lng']})
+        for leg in res[0]['legs']: punti.append({'lat': leg['end_location']['lat'], 'lon': leg['end_location']['lng']})
+        return pd.DataFrame(punti)
 
     # --- UI PRINCIPALE ---
     st.title("🚚 Dashboard Analisi Consegne Vettori")
-    st.markdown("Carica il tuo file Excel per calcolare i percorsi ottimizzati.")
+    st.markdown("Carica il file Excel per ottimizzare i percorsi.")
     st.sidebar.subheader("Controlli Dashboard")
-    file_excel = st.sidebar.file_uploader("Carica il tuo foglio Excel", type=['xlsx', 'xls'])
+    file_excel = st.sidebar.file_uploader("Carica foglio Excel", type=['xlsx', 'xls'])
 
     if file_excel is not None:
         df = carica_dati(file_excel)
         if df is not None:
-            st.sidebar.success("File Excel caricato con successo!")
-            colonne_richieste = ['COD-VETTORE', 'INDIRIZZO', 'LOCALITA', 'MS-LOCALIT']
-            if not all(col in df.columns for col in colonne_richieste):
-                st.sidebar.error(f"Il file Excel deve contenere: {', '.join(colonne_richieste)}.")
+            st.sidebar.success("File caricato!")
+            colonne = ['COD-VETTORE', 'INDIRIZZO', 'LOCALITA', 'MS-LOCALIT']
+            if not all(col in df.columns for col in colonne):
+                st.sidebar.error(f"Mancano colonne: {', '.join(colonne)}.")
             else:
                 vettori = sorted(df['COD-VETTORE'].dropna().unique().tolist())
-                vettore_selezionato = st.sidebar.selectbox("Seleziona un vettore:", options=vettori)
-                if vettore_selezionato:
+                vettore_sel = st.sidebar.selectbox("Seleziona un vettore:", options=vettori)
+                if vettore_sel:
                     st.markdown("---")
-                    st.header(f"Analisi per il vettore: **{vettore_selezionato}**")
-                    citta_partenza = PUNTI_PARTENZA_VETTORI.get(vettore_selezionato, "BRESCIA")
+                    st.header(f"Analisi per il vettore: **{vettore_sel}**")
+                    citta_partenza = PUNTI_PARTENZA_VETTORI.get(vettore_sel, "BRESCIA")
                     indirizzo_partenza = INDIRIZZO_PARTENZA_CIEB if citta_partenza == "BRESCIA" else citta_partenza
                     st.info(f"📍 Punto di partenza/arrivo: **{indirizzo_partenza}**")
 
-                    df_vettore = df[df['COD-VETTORE'] == vettore_selezionato].copy()
+                    df_vettore = df[df['COD-VETTORE'] == vettore_sel].copy()
                     
-                    # Logica destinazione
+                    # --- BLOCCO DI LOGICA PER LA DESTINAZIONE (invariato) ---
                     df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].fillna('').astype(str)
                     df_vettore['LOCALITA'] = df_vettore['LOCALITA'].fillna('').astype(str)
                     df_vettore['INDIRIZZO'] = df_vettore['INDIRIZZO'].fillna('').astype(str)
                     localita_scelta = np.where(df_vettore['MS-LOCALIT'].str.strip() != '', df_vettore['MS-LOCALIT'], df_vettore['LOCALITA'])
                     df_vettore['IndirizzoCompleto'] = df_vettore['INDIRIZZO'] + ", " + localita_scelta
                     
+                    # === NUOVO BLOCCO DI ISPEZIONE AVANZATA ===
+                    with st.expander("🔬 CLICCA QUI PER APRIRE LA FINESTRA DI ISPEZIONE DATI"):
+                        st.warning("Questa tabella mostra i dati letti e l'indirizzo finale generato.")
+                        # Crea una tabella di debug con le colonne rilevanti
+                        df_debug = df_vettore[['INDIRIZZO', 'LOCALITA', 'MS-LOCALIT', 'IndirizzoCompleto']].copy()
+                        st.dataframe(df_debug)
+                    # ==========================================
+
                     indirizzi_da_visitare = df_vettore['IndirizzoCompleto'].unique().tolist()
                     
+                    # --- Il resto del codice per mostrare i risultati rimane invariato ---
                     col1, col2 = st.columns(2)
                     with col1:
                         st.subheader(f"📍 {len(indirizzi_da_visitare)} Destinazioni uniche")
