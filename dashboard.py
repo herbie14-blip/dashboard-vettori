@@ -103,7 +103,7 @@ if file_excel is not None:
                 df_vettore = df[df['COD-VETTORE'] == vettore_selezionato].copy()
 
                 # === BLOCCO DI LOGICA CORRETTO E DEFINITIVO ===
-               # === BLOCCO DI LOGICA CORRETTO E DEFINITIVO ===
+                # === BLOCCO DI LOGICA CORRETTO E DEFINITIVO ===
 # 1. Riempi i valori mancanti (None/NaN) con stringhe vuote PRIMA di fare qualsiasi altra cosa.
 df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].fillna('')
 df_vettore['LOCALITA'] = df_vettore['LOCALITA'].fillna('')
