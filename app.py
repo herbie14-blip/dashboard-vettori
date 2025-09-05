@@ -33,6 +33,7 @@ def check_password():
         st.rerun()
         return True
     elif password: st.error("Password errata.")
+
     return False
 
 # --- UI DELLA SIDEBAR ---
@@ -73,4 +74,4 @@ if check_password():
         return pd.DataFrame(punti)
 
     # --- UI PRINCIPALE ---
-    st.title("🚚 Dashboard Analisi Conseg
+    st.title("🚚 Dashboard Analisi Consegne Vettori")
