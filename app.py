@@ -8,7 +8,6 @@ import numpy as np
 st.set_page_config(page_title="Cieb - Analisi Consegne Vettori", layout="wide")
 
 # --- DATI FISSI ---
-# Rubrica interna per i punti di partenza e arrivo dei vettori
 PUNTI_PARTENZA_VETTORI = {
     "LINE": "BRESCIA", "DAM1": "BRESCIA", "NEX4": "BRESCIA", "NEX8": "BRESCIA",
     "MBE": "BRESCIA", "NEX3": "BRESCIA", "NEX6": "BRESCIA", "PAP2": "BRESCIA",
@@ -19,22 +18,16 @@ PUNTI_PARTENZA_VETTORI = {
     "CTM4": "CALDERARA DI RENO", "CTM5": "CALDERARA DI RENO", "CTM6": "CALDERARA DI RENO",
     "TNT": "TRENTO"
 }
-# Indirizzo specifico per Cieb a Brescia
 INDIRIZZO_PARTENZA_CIEB = "Cieb S.p.A., Via Giovanni Battista Cacciamali, 62, 25125 Brescia BS, Italia"
-
 
 # --- LOGICA DI AUTENTICAZIONE ---
 def check_password():
-    """Restituisce True se l'utente ha inserito la password corretta."""
     try:
         correct_password = st.secrets["APP_PASSWORD"]
     except:
-        # Se la password non è impostata nei segreti, permette l'accesso per test locali
         return True
-
     if st.session_state.get("password_correct", False):
         return True
-
     password = st.text_input("Inserisci la password per accedere", type="password")
     if password == correct_password:
         st.session_state["password_correct"] = True
@@ -44,14 +37,12 @@ def check_password():
         st.error("Password errata.")
     return False
 
-# --- UI DELLA SIDEBAR (VISIBILE A TUTTI) ---
+# --- UI DELLA SIDEBAR ---
 st.sidebar.image("logo_cieb.png", use_container_width=True)
 st.sidebar.markdown("---")
 
-
-# --- APPLICAZIONE PRINCIPALE (VISIBILE DOPO LOGIN) ---
+# --- APPLICAZIONE PRINCIPALE ---
 if check_password():
-    # Inizializza il client di Google Maps solo dopo che la password è corretta
     try:
         gmaps = googlemaps.Client(key=st.secrets["GOOGLE_MAPS_API_KEY"])
     except Exception as e:
@@ -68,31 +59,27 @@ if check_password():
             return None
 
     def calcola_percorso_ottimizzato(_gmaps_client, indirizzi_waypoint, origine, destinazione):
-        if not indirizzi_waypoint:
-            return 0, 0, [], None
+        if not indirizzi_waypoint: return 0, 0, [], None
         try:
             directions_result = _gmaps_client.directions(
-                origin=origine, destination=destinazione,
-                waypoints=indirizzi_waypoint, optimize_waypoints=True,
-                mode="driving", departure_time=datetime.now()
+                origin=origine, destination=destinazione, waypoints=indirizzi_waypoint, 
+                optimize_waypoints=True, mode="driving", departure_time=datetime.now()
             )
             if not directions_result:
-                st.warning("Google Maps non ha restituito un risultato per questo percorso.")
+                st.warning("Google Maps non ha restituito un risultato.")
                 return 0, 0, [], None
-            distanza_totale_km = sum(leg['distance']['value'] for leg in directions_result[0]['legs']) / 1000
-            tempo_totale_secondi = sum(leg['duration']['value'] for leg in directions_result[0]['legs'])
-            tempo_totale_minuti = tempo_totale_secondi / 60
-            ordine_ottimizzato_idx = directions_result[0]['waypoint_order']
-            indirizzi_ordinati = [indirizzi_waypoint[i] for i in ordine_ottimizzato_idx]
-            return round(distanza_totale_km, 2), round(tempo_totale_minuti), indirizzi_ordinati, directions_result
+            distanza_km = sum(leg['distance']['value'] for leg in directions_result[0]['legs']) / 1000
+            tempo_min = sum(leg['duration']['value'] for leg in directions_result[0]['legs']) / 60
+            ordine_idx = directions_result[0]['waypoint_order']
+            indirizzi_ordinati = [indirizzi_waypoint[i] for i in ordine_idx]
+            return round(distanza_km, 2), round(tempo_min), indirizzi_ordinati, directions_result
         except Exception as e:
             st.error(f"Errore durante la chiamata a Google Maps API: {e}")
             return 0, 0, [], None
 
     def estrai_coordinate_per_mappa(directions_result):
         punti_mappa = []
-        if not directions_result:
-            return pd.DataFrame()
+        if not directions_result: return pd.DataFrame()
         partenza = directions_result[0]['legs'][0]['start_location']
         punti_mappa.append({'lat': partenza['lat'], 'lon': partenza['lng']})
         for leg in directions_result[0]['legs']:
@@ -102,8 +89,7 @@ if check_password():
 
     # --- UI PRINCIPALE ---
     st.title("🚚 Dashboard Analisi Consegne Vettori")
-    st.markdown("Carica il tuo file Excel per analizzare le consegne e calcolare i percorsi ottimizzati.")
-
+    st.markdown("Carica il tuo file Excel per calcolare i percorsi ottimizzati.")
     st.sidebar.subheader("Controlli Dashboard")
     file_excel = st.sidebar.file_uploader("Carica il tuo foglio Excel", type=['xlsx', 'xls'])
 
@@ -111,33 +97,25 @@ if check_password():
         df = carica_dati(file_excel)
         if df is not None:
             st.sidebar.success("File Excel caricato con successo!")
-            
             colonne_richieste = ['COD-VETTORE', 'INDIRIZZO', 'LOCALITA', 'MS-LOCALIT']
             if not all(col in df.columns for col in colonne_richieste):
-                st.sidebar.error(f"Il file Excel deve contenere le colonne: {', '.join(colonne_richieste)}.")
+                st.sidebar.error(f"Il file Excel deve contenere: {', '.join(colonne_richieste)}.")
             else:
-                vettori_disponibili = sorted(df['COD-VETTORE'].dropna().unique().tolist())
-                vettore_selezionato = st.sidebar.selectbox("Seleziona un vettore da analizzare:", options=vettori_disponibili)
-
+                vettori = sorted(df['COD-VETTORE'].dropna().unique().tolist())
+                vettore_selezionato = st.sidebar.selectbox("Seleziona un vettore:", options=vettori)
                 if vettore_selezionato:
                     st.markdown("---")
                     st.header(f"Analisi per il vettore: **{vettore_selezionato}**")
-
                     citta_partenza = PUNTI_PARTENZA_VETTORI.get(vettore_selezionato, "BRESCIA")
-                    if citta_partenza == "BRESCIA":
-                        indirizzo_partenza_attuale = INDIRIZZO_PARTENZA_CIEB
-                    else:
-                        indirizzo_partenza_attuale = citta_partenza
-                    st.info(f"📍 Punto di partenza/arrivo calcolato per questo giro: **{indirizzo_partenza_attuale}**")
+                    indirizzo_partenza = INDIRIZZO_PARTENZA_CIEB if citta_partenza == "BRESCIA" else citta_partenza
+                    st.info(f"📍 Punto di partenza/arrivo: **{indirizzo_partenza}**")
 
                     df_vettore = df[df['COD-VETTORE'] == vettore_selezionato].copy()
-
-                    # --- BLOCCO DI LOGICA PER LA DESTINAZIONE ---
-                    df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].fillna('')
-                    df_vettore['LOCALITA'] = df_vettore['LOCALITA'].fillna('')
-                    df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].astype(str)
-                    df_vettore['LOCALITA'] = df_vettore['LOCALITA'].astype(str)
-                    df_vettore['INDIRIZZO'] = df_vettore['INDIRIZZO'].astype(str)
+                    
+                    # Logica destinazione
+                    df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].fillna('').astype(str)
+                    df_vettore['LOCALITA'] = df_vettore['LOCALITA'].fillna('').astype(str)
+                    df_vettore['INDIRIZZO'] = df_vettore['INDIRIZZO'].fillna('').astype(str)
                     localita_scelta = np.where(df_vettore['MS-LOCALIT'].str.strip() != '', df_vettore['MS-LOCALIT'], df_vettore['LOCALITA'])
                     df_vettore['IndirizzoCompleto'] = df_vettore['INDIRIZZO'] + ", " + localita_scelta
                     
@@ -145,4 +123,24 @@ if check_password():
                     
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.subheader(f"
+                        st.subheader(f"📍 {len(indirizzi_da_visitare)} Destinazioni uniche")
+                        st.dataframe(pd.DataFrame({'Indirizzi da visitare': indirizzi_da_visitare}))
+                    
+                    if st.button("🚀 Calcola Percorso Ottimizzato"):
+                        with st.spinner("Calcolo il percorso migliore..."):
+                            distanza, tempo, tappe, result = calcola_percorso_ottimizzato(gmaps, indirizzi_da_visitare, indirizzo_partenza, indirizzo_partenza)
+                        with col2:
+                            st.subheader("✅ Risultato Ottimizzazione")
+                            if distanza > 0:
+                                m1, m2 = st.columns(2)
+                                m1.metric("Distanza Totale", f"{distanza} km")
+                                m2.metric("Tempo Stimato", f"~ {tempo} min")
+                                st.write("**Ordine di consegna consigliato:**")
+                                tappe_df = pd.DataFrame({'Tappe Ottimizzate': [f"{i+1}. {tappa}" for i, tappa in enumerate(tappe)]})
+                                st.dataframe(tappe_df)
+                                df_mappa = estrai_coordinate_per_mappa(result)
+                                if not df_mappa.empty:
+                                    st.subheader("Mappa delle Tappe")
+                                    st.map(df_mappa)
+                            else:
+                                st.error("Impossibile calcolare il percorso.")
