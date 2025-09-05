@@ -2,11 +2,11 @@ import streamlit as st
 import pandas as pd
 import googlemaps
 from datetime import datetime
+import numpy as np
 
 # --- CONFIGURAZIONE INIZIALE ---
 st.set_page_config(page_title="Cieb - Analisi Consegne Vettori", layout="wide")
 
-# NUOVO: Rubrica interna per i punti di partenza e arrivo dei vettori
 PUNTI_PARTENZA_VETTORI = {
     "LINE": "BRESCIA", "DAM1": "BRESCIA", "NEX4": "BRESCIA", "NEX8": "BRESCIA",
     "MBE": "BRESCIA", "NEX3": "BRESCIA", "NEX6": "BRESCIA", "PAP2": "BRESCIA",
@@ -17,20 +17,17 @@ PUNTI_PARTENZA_VETTORI = {
     "CTM4": "CALDERARA DI RENO", "CTM5": "CALDERARA DI RENO", "CTM6": "CALDERARA DI RENO",
     "TNT": "TRENTO"
 }
-# MODIFICATO: Indirizzo specifico per Cieb
 INDIRIZZO_PARTENZA_CIEB = "Cieb S.p.A., Via Giovanni Battista Cacciamali, 62, 25125 Brescia BS, Italia"
 
-# --- Mostra il logo nella sidebar ---
 st.sidebar.image("logo_cieb.png", use_container_width=True)
 
-# Tenta di inizializzare il client di Google Maps
 try:
     gmaps = googlemaps.Client(key=st.secrets["GOOGLE_MAPS_API_KEY"])
 except Exception as e:
     st.error(f"Errore nella configurazione della chiave API. Controlla il tuo file secrets.toml: {e}")
     st.stop()
 
-# --- FUNZIONI CORE (rimangono invariate) ---
+# --- FUNZIONI CORE ---
 @st.cache_data
 def carica_dati(file_caricato):
     try:
@@ -40,6 +37,7 @@ def carica_dati(file_caricato):
         return None
 
 def calcola_percorso_ottimizzato(_gmaps_client, indirizzi_waypoint, origine, destinazione):
+    # (Il resto delle funzioni core rimane invariato)
     if not indirizzi_waypoint:
         return 0, 0, [], None
     try:
@@ -76,7 +74,6 @@ def estrai_coordinate_per_mappa(directions_result):
 st.title("🚚 Dashboard Analisi Consegne Vettori")
 st.markdown("Carica il tuo file Excel per analizzare le consegne e calcolare i percorsi ottimizzati.")
 
-# --- Controlli nella sidebar ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("Controlli Dashboard")
 file_excel = st.sidebar.file_uploader("Carica il tuo foglio Excel", type=['xlsx', 'xls'])
@@ -85,7 +82,8 @@ if file_excel is not None:
     df = carica_dati(file_excel)
     if df is not None:
         st.sidebar.success("File Excel caricato con successo!")
-        colonne_richieste = ['COD-VETTORE', 'INDIRIZZO', 'LOCALITA']
+        
+        colonne_richieste = ['COD-VETTORE', 'INDIRIZZO', 'LOCALITA', 'MS-LOCALIT']
         if not all(col in df.columns for col in colonne_richieste):
             st.sidebar.error(f"Il file Excel deve contenere le colonne: {', '.join(colonne_richieste)}.")
         else:
@@ -96,7 +94,6 @@ if file_excel is not None:
                 st.markdown("---")
                 st.header(f"Analisi per il vettore: **{vettore_selezionato}**")
 
-                # NUOVA LOGICA: Determina il punto di partenza e arrivo dinamicamente
                 citta_partenza = PUNTI_PARTENZA_VETTORI.get(vettore_selezionato, "BRESCIA")
                 if citta_partenza == "BRESCIA":
                     indirizzo_partenza_attuale = INDIRIZZO_PARTENZA_CIEB
@@ -105,9 +102,24 @@ if file_excel is not None:
                 st.info(f"📍 Punto di partenza/arrivo calcolato per questo giro: **{indirizzo_partenza_attuale}**")
 
                 df_vettore = df[df['COD-VETTORE'] == vettore_selezionato].copy()
-                df_vettore['IndirizzoCompleto'] = df_vettore['INDIRIZZO'].astype(str) + ", " + df_vettore['LOCALITA'].astype(str)
+
+                # === BLOCCO DI ISPEZIONE TEMPORANEO ===
+                st.warning("--- FINESTRA DI ISPEZIONE DATI (da rimuovere dopo il test) ---")
+                st.write(f"Dati letti dal file Excel per '{vettore_selezionato}' (prime 5 righe):")
+                # Mostra solo le colonne che ci interessano per il debug
+                st.dataframe(df_vettore[['INDIRIZZO', 'LOCALITA', 'MS-LOCALIT']].head())
+                # =======================================
+
+                df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].astype(str).fillna('')
+                df_vettore['LOCALITA'] = df_vettore['LOCALITA'].astype(str).fillna('')
+                df_vettore['INDIRIZZO'] = df_vettore['INDIRIZZO'].astype(str).fillna('')
+                
+                localita_scelta = np.where(df_vettore['MS-LOCALIT'].str.strip() != '', df_vettore['MS-LOCALIT'], df_vettore['LOCALITA'])
+                df_vettore['IndirizzoCompleto'] = df_vettore['INDIRIZZO'] + ", " + localita_scelta
+                
                 indirizzi_da_visitare = df_vettore['IndirizzoCompleto'].unique().tolist()
                 
+                # ... il resto del codice UI rimane invariato ...
                 col1, col2 = st.columns(2)
                 with col1:
                     st.subheader(f"📍 {len(indirizzi_da_visitare)} Destinazioni uniche")
@@ -115,7 +127,6 @@ if file_excel is not None:
 
                 if st.button("🚀 Calcola Percorso Ottimizzato"):
                     with st.spinner("Calcolo il percorso migliore..."):
-                        # MODIFICATO: Usa l'indirizzo di partenza dinamico
                         distanza_km, tempo_min, tappe_ordinate, result_completo = calcola_percorso_ottimizzato(
                             gmaps, indirizzi_da_visitare, indirizzo_partenza_attuale, indirizzo_partenza_attuale
                         )
