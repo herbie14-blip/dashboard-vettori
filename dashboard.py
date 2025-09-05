@@ -37,7 +37,6 @@ def carica_dati(file_caricato):
         return None
 
 def calcola_percorso_ottimizzato(_gmaps_client, indirizzi_waypoint, origine, destinazione):
-    # (Il resto delle funzioni core rimane invariato)
     if not indirizzi_waypoint:
         return 0, 0, [], None
     try:
@@ -103,47 +102,11 @@ if file_excel is not None:
 
                 df_vettore = df[df['COD-VETTORE'] == vettore_selezionato].copy()
 
-                # === BLOCCO DI ISPEZIONE TEMPORANEO ===
-                st.warning("--- FINESTRA DI ISPEZIONE DATI (da rimuovere dopo il test) ---")
-                st.write(f"Dati letti dal file Excel per '{vettore_selezionato}' (prime 5 righe):")
-                # Mostra solo le colonne che ci interessano per il debug
-                st.dataframe(df_vettore[['INDIRIZZO', 'LOCALITA', 'MS-LOCALIT']].head())
-                # =======================================
+                # === BLOCCO DI LOGICA CORRETTO E DEFINITIVO ===
+                # 1. Riempi i valori mancanti (None/NaN) con stringhe vuote PRIMA di fare qualsiasi altra cosa.
+                df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].fillna('')
+                df_vettore['LOCALITA'] = df_vettore['LOCALITA'].fillna('')
 
-                df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].astype(str).fillna('')
-                df_vettore['LOCALITA'] = df_vettore['LOCALITA'].astype(str).fillna('')
-                df_vettore['INDIRIZZO'] = df_vettore['INDIRIZZO'].astype(str).fillna('')
-                
-                localita_scelta = np.where(df_vettore['MS-LOCALIT'].str.strip() != '', df_vettore['MS-LOCALIT'], df_vettore['LOCALITA'])
-                df_vettore['IndirizzoCompleto'] = df_vettore['INDIRIZZO'] + ", " + localita_scelta
-                
-                indirizzi_da_visitare = df_vettore['IndirizzoCompleto'].unique().tolist()
-                
-                # ... il resto del codice UI rimane invariato ...
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader(f"📍 {len(indirizzi_da_visitare)} Destinazioni uniche")
-                    st.dataframe(pd.DataFrame({'Indirizzi da visitare': indirizzi_da_visitare}), use_container_width=True)
-
-                if st.button("🚀 Calcola Percorso Ottimizzato"):
-                    with st.spinner("Calcolo il percorso migliore..."):
-                        distanza_km, tempo_min, tappe_ordinate, result_completo = calcola_percorso_ottimizzato(
-                            gmaps, indirizzi_da_visitare, indirizzo_partenza_attuale, indirizzo_partenza_attuale
-                        )
-                    with col2:
-                        st.subheader("✅ Risultato Ottimizzazione")
-                        if distanza_km > 0:
-                            metrica1, metrica2 = st.columns(2)
-                            metrica1.metric(label="Distanza Totale Stimata", value=f"{distanza_km} km")
-                            metrica2.metric(label="Tempo di Percorrenza Stimato", value=f"~ {tempo_min} min")
-                            
-                            st.write("**Ordine di consegna consigliato:**")
-                            tappe_visualizzazione = [f"{i+1}. {tappa}" for i, tappa in enumerate(tappe_ordinate)]
-                            st.dataframe(pd.DataFrame({'Tappe Ottimizzate': tappe_visualizzazione}), use_container_width=True)
-                            
-                            df_mappa = estrai_coordinate_per_mappa(result_completo)
-                            if not df_mappa.empty:
-                                st.subheader("Mappa delle Tappe")
-                                st.map(df_mappa)
-                        else:
-                            st.error("Impossibile calcolare il percorso. Controlla la validità degli indirizzi.")
+                # 2. Assicura che le colonne siano di tipo stringa per i passaggi successivi.
+                df_vettore['MS-LOCALIT'] = df_vettore['MS-LOCALIT'].astype(str)
+                df_vettore['LOCALITA'] = df_
