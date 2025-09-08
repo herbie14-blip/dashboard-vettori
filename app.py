@@ -25,25 +25,21 @@ INDIRIZZO_PARTENZA_CIEB = "Cieb S.p.A., Via Giovanni Battista Cacciamali, 62, 25
 def check_password():
     try:
         correct_password = st.secrets["APP_PASSWORD"]
-    except:
-        return True
-    if st.session_state.get("password_correct", False):
-        return True
+    except: return True
+    if st.session_state.get("password_correct", False): return True
     password = st.text_input("Inserisci la password per accedere", type="password")
     if password == correct_password:
         st.session_state["password_correct"] = True
         st.rerun()
         return True
-    elif password:
-        st.error("Password errata.")
+    elif password: st.error("Password errata.")
     return False
 
-# --- UI DELLA SIDEBAR (VISIBILE A TUTTI) ---
+# --- UI DELLA SIDEBAR ---
 st.sidebar.image("logo_cieb.png", use_container_width=True)
 st.sidebar.markdown("---")
 
-
-# --- APPLICAZIONE PRINCIPALE (VISIBILE DOPO LOGIN) ---
+# --- APPLICAZIONE PRINCIPALE ---
 if check_password():
     try:
         gmaps = googlemaps.Client(key=st.secrets["GOOGLE_MAPS_API_KEY"])
@@ -54,11 +50,8 @@ if check_password():
     # --- FUNZIONI CORE ---
     @st.cache_data
     def carica_dati(file_caricato):
-        try:
-            return pd.read_excel(file_caricato)
-        except Exception as e:
-            st.error(f"Errore durante la lettura del file Excel: {e}")
-            return None
+        try: return pd.read_excel(file_caricato)
+        except Exception as e: st.error(f"Errore lettura Excel: {e}"); return None
 
     def calcola_percorso_ottimizzato(_gmaps_client, indirizzi, origine, destinazione):
         if not indirizzi: return 0, 0, [], None
@@ -96,6 +89,64 @@ if check_password():
         if df is not None:
             st.sidebar.success("File caricato!")
             
-            colonne = ['COD-VETTOR', 'INDIRIZZO', 'LOCALITA', 'CAP', 'MS-LOCALIT', 'MS-CAP']
-            if not all(col in df.columns for col in colonne):
-                st.sidebar.error(f"Mancano colonne: assicurati che ci siano {', '.join(colonne)}.")
+            colonne_richieste = ['COD-VETTOR', 'INDIRIZZO', 'LOCALITA', 'CAP', 'MS-LOCALIT', 'MS-CAP']
+            
+            # === BLOCCO DI CONTROLLO MODIFICATO ===
+            colonne_mancanti = [col for col in colonne_richieste if col not in df.columns]
+            
+            if colonne_mancanti:
+                st.sidebar.error("ERRORE: Colonne mancanti o scritte in modo errato.")
+                st.sidebar.write("**Colonne richieste:**")
+                st.sidebar.code(colonne_richieste)
+                st.sidebar.write("**Colonne trovate nel tuo file:**")
+                st.sidebar.code(list(df.columns))
+            # ======================================
+            else:
+                vettori = sorted(df['COD-VETTOR'].dropna().unique().tolist())
+                vettore_sel = st.sidebar.selectbox("Seleziona un vettore:", options=vettori)
+                if vettore_sel:
+                    # ... (il resto del codice rimane invariato) ...
+                    st.markdown("---")
+                    st.header(f"Analisi per il vettore: **{vettore_sel}**")
+                    citta_partenza = PUNTI_PARTENZA_VETTORI.get(vettore_sel, "BRESCIA")
+                    indirizzo_partenza = INDIRIZZO_PARTENZA_CIEB if citta_partenza == "BRESCIA" else citta_partenza
+                    st.info(f"📍 Punto di partenza/arrivo: **{indirizzo_partenza}**")
+
+                    df_vettore = df[df['COD-VETTOR'] == vettore_sel].copy()
+                    
+                    for col in ['INDIRIZZO', 'LOCALITA', 'MS-LOCALIT', 'CAP', 'MS-CAP']:
+                        df_vettore[col] = df_vettore[col].fillna('').astype(str)
+                        if 'CAP' in col:
+                            df_vettore[col] = df_vettore[col].str.replace(r'\.0$', '', regex=True)
+                    
+                    condition = df_vettore['MS-LOCALIT'].str.strip() != ''
+                    localita_scelta = np.where(condition, df_vettore['MS-LOCALIT'], df_vettore['LOCALITA'])
+                    cap_scelto = np.where(condition, df_vettore['MS-CAP'], df_vettore['CAP'])
+                    
+                    df_vettore['IndirizzoCompleto'] = df_vettore['INDIRIZZO'] + ", " + cap_scelto + " " + localita_scelta
+                    
+                    indirizzi_da_visitare = df_vettore['IndirizzoCompleto'].unique().tolist()
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader(f"📍 {len(indirizzi_da_visitare)} Destinazioni uniche")
+                        st.dataframe(pd.DataFrame({'Indirizzi da visitare': indirizzi_da_visitare}))
+                    
+                    if st.button("🚀 Calcola Percorso Ottimizzato"):
+                        with st.spinner("Calcolo il percorso migliore..."):
+                            distanza, tempo, tappe, result = calcola_percorso_ottimizzato(gmaps, indirizzi_da_visitare, indirizzo_partenza, indirizzo_partenza)
+                        with col2:
+                            st.subheader("✅ Risultato Ottimizzazione")
+                            if distanza > 0:
+                                m1, m2 = st.columns(2)
+                                m1.metric("Distanza Totale", f"{distanza} km")
+                                m2.metric("Tempo Stimato", f"~ {tempo} min")
+                                st.write("**Ordine di consegna consigliato:**")
+                                tappe_df = pd.DataFrame({'Tappe Ottimizzate': [f"{i+1}. {tappa}" for i, tappa in enumerate(tappe)]})
+                                st.dataframe(tappe_df)
+                                df_mappa = estrai_coordinate_per_mappa(result)
+                                if not df_mappa.empty:
+                                    st.subheader("Mappa delle Tappe")
+                                    st.map(df_mappa)
+                            else:
+                                st.error("Impossibile calcolare il percorso.")
